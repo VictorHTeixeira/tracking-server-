@@ -16,8 +16,12 @@ app.use(bodyParser.json());
 // 🔹 Configuração do banco de dados
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false } // Render exige isso!
+  ssl: {
+    require: true,
+    rejectUnauthorized: false
+  }
 });
+
 
 // 🔹 Rota de teste
 app.get("/", (req, res) => {
