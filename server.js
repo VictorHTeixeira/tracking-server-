@@ -44,7 +44,6 @@ app.post("/track", async (req, res) => {
     res.status(500).json({ error: "Erro ao salvar evento" });
   }
 });
-
 // ✅ Novo endpoint para listar eventos
 app.get("/events", async (req, res) => {
   const { user_id, event_name } = req.query;
@@ -56,21 +55,29 @@ app.get("/events", async (req, res) => {
     conditions.push(`user_id = $${values.length + 1}`);
     values.push(user_id);
   }
+
   if (event_name) {
     conditions.push(`event_name = $${values.length + 1}`);
     values.push(event_name);
   }
+
   if (conditions.length > 0) {
     query += " WHERE " + conditions.join(" AND ");
   }
+
   query += " ORDER BY created_at DESC LIMIT 100;";
 
   try {
     const result = await pool.query(query, values);
+    console.log(`✅ Consulta executada com sucesso (${result.rowCount} eventos encontrados)`);
     res.json(result.rows);
   } catch (error) {
-    console.error("Erro ao buscar eventos:", error);
-    res.status(500).json({ error: "Erro ao buscar eventos" });
+    console.error("❌ Erro ao buscar eventos:", error.message);
+    console.error(error.stack);
+    res.status(500).json({
+      error: "Erro ao buscar eventos",
+      details: error.message,
+    });
   }
 });
 
