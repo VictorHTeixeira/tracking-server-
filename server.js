@@ -1,83 +1,80 @@
 import express from "express";
+import bodyParser from "body-parser";
 import pkg from "pg";
+const { Pool } = pkg;
 import dotenv from "dotenv";
-
 dotenv.config();
 
-const { Pool } = pkg;
 const app = express();
+const port = process.env.PORT || 3000;
 
-app.use(express.json());
+// Middleware
+app.use(bodyParser.json());
 
-// 🔧 Configuração do pool de conexões (Session Pooler do Supabase)
+// Conexão com Supabase (Postgres)
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false },
-  max: 5,
-  idleTimeoutMillis: 30000,
 });
 
-// 🧠 Testa conexão inicial
-async function testConnection() {
-  try {
-    const client = await pool.connect();
-    console.log("✅ Conectado ao banco com sucesso!");
-    client.release();
-  } catch (err) {
-    console.error("❌ Erro ao conectar ao banco:", err.message);
-  }
-}
+// ✅ Endpoint raiz
+app.get("/", (req, res) => {
+  res.send("✅ Tracking Server online e com dashboard!");
+});
 
-// 🚀 Endpoint principal — recebe e salva eventos
+// ✅ Endpoint para registrar eventos
 app.post("/track", async (req, res) => {
   const { event_name, user_id, page_url, metadata } = req.body;
 
-  // Validação básica
-  if (!event_name || !user_id) {
-    return res.status(400).json({
-      success: false,
-      error: "Campos obrigatórios ausentes (event_name, user_id).",
-    });
+  if (!event_name) {
+    return res.status(400).json({ error: "event_name é obrigatório" });
   }
 
   try {
-    // 🏗️ Cria tabela automaticamente (caso não exista)
-    const createTable = `
-      CREATE TABLE IF NOT EXISTS events (
-        id SERIAL PRIMARY KEY,
-        event_name TEXT NOT NULL,
-        user_id TEXT NOT NULL,
-        page_url TEXT,
-        metadata JSONB,
-        created_at TIMESTAMP DEFAULT NOW()
-      )
-    `;
-    await pool.query(createTable);
-
-    // 💾 Insere o evento
-    const insertQuery = `
+    const query = `
       INSERT INTO events (event_name, user_id, page_url, metadata)
       VALUES ($1, $2, $3, $4)
+      RETURNING *;
     `;
     const values = [event_name, user_id, page_url, metadata || {}];
-    await pool.query(insertQuery, values);
-
-    console.log(`✅ Evento salvo: ${event_name} (${user_id})`);
-    res.json({ success: true, message: "Evento salvo com sucesso!" });
-  } catch (err) {
-    // 🧩 Log detalhado para depuração
-    console.error("❌ Erro ao salvar evento completo:", err);
-    res.status(500).json({
-      success: false,
-      error: err.message || "Erro desconhecido",
-      stack: err.stack,
-    });
+    const result = await pool.query(query, values);
+    res.status(201).json({ success: true, event: result.rows[0] });
+  } catch (error) {
+    console.error("Erro ao salvar evento:", error);
+    res.status(500).json({ error: "Erro ao salvar evento" });
   }
 });
 
-// 🚀 Inicializa o servidor
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => {
-  console.log(`🚀 Servidor rodando na porta ${PORT}`);
-  testConnection();
+// ✅ Novo endpoint para listar eventos
+app.get("/events", async (req, res) => {
+  const { user_id, event_name } = req.query;
+  let query = "SELECT * FROM events";
+  const conditions = [];
+  const values = [];
+
+  if (user_id) {
+    conditions.push(`user_id = $${values.length + 1}`);
+    values.push(user_id);
+  }
+  if (event_name) {
+    conditions.push(`event_name = $${values.length + 1}`);
+    values.push(event_name);
+  }
+  if (conditions.length > 0) {
+    query += " WHERE " + conditions.join(" AND ");
+  }
+  query += " ORDER BY created_at DESC LIMIT 100;";
+
+  try {
+    const result = await pool.query(query, values);
+    res.json(result.rows);
+  } catch (error) {
+    console.error("Erro ao buscar eventos:", error);
+    res.status(500).json({ error: "Erro ao buscar eventos" });
+  }
+});
+
+// Inicia o servidor
+app.listen(port, () => {
+  console.log(`Servidor rodando na porta ${port}`);
 });
