@@ -9,15 +9,15 @@ const app = express();
 
 app.use(express.json());
 
-// Configuração do pool de conexões (Session Pooler do Supabase)
+// 🔧 Configuração do pool de conexões (Session Pooler do Supabase)
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false },
   max: 5,
-  idleTimeoutMillis: 30000
+  idleTimeoutMillis: 30000,
 });
 
-// Testa conexão inicial
+// 🧠 Testa conexão inicial
 async function testConnection() {
   try {
     const client = await pool.connect();
@@ -28,16 +28,20 @@ async function testConnection() {
   }
 }
 
-// Endpoint principal
+// 🚀 Endpoint principal — recebe e salva eventos
 app.post("/track", async (req, res) => {
   const { event_name, user_id, page_url, metadata } = req.body;
 
+  // Validação básica
   if (!event_name || !user_id) {
-    return res.status(400).json({ success: false, error: "Campos obrigatórios ausentes" });
+    return res.status(400).json({
+      success: false,
+      error: "Campos obrigatórios ausentes (event_name, user_id).",
+    });
   }
 
   try {
-    // Cria a tabela automaticamente, se não existir
+    // 🏗️ Cria tabela automaticamente (caso não exista)
     const createTable = `
       CREATE TABLE IF NOT EXISTS events (
         id SERIAL PRIMARY KEY,
@@ -50,7 +54,7 @@ app.post("/track", async (req, res) => {
     `;
     await pool.query(createTable);
 
-    // Insere o evento
+    // 💾 Insere o evento
     const insertQuery = `
       INSERT INTO events (event_name, user_id, page_url, metadata)
       VALUES ($1, $2, $3, $4)
@@ -59,14 +63,19 @@ app.post("/track", async (req, res) => {
     await pool.query(insertQuery, values);
 
     console.log(`✅ Evento salvo: ${event_name} (${user_id})`);
-    res.json({ success: true, message: "Evento salvo com sucesso" });
+    res.json({ success: true, message: "Evento salvo com sucesso!" });
   } catch (err) {
-    console.error("❌ Erro ao salvar evento:", err.message);
-    res.status(500).json({ success: false, error: err.message });
+    // 🧩 Log detalhado para depuração
+    console.error("❌ Erro ao salvar evento completo:", err);
+    res.status(500).json({
+      success: false,
+      error: err.message || "Erro desconhecido",
+      stack: err.stack,
+    });
   }
 });
 
-// Inicializa servidor
+// 🚀 Inicializa o servidor
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
   console.log(`🚀 Servidor rodando na porta ${PORT}`);
