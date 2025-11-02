@@ -9,17 +9,15 @@ const app = express();
 
 app.use(express.json());
 
-// Configura o pool de conexões com o Supabase (Session Pooler)
+// Configuração do pool de conexões (Session Pooler do Supabase)
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false // evita erro de certificado no Render
-  },
-  max: 5, // número máximo de conexões simultâneas
-  idleTimeoutMillis: 30000 // fecha conexões inativas após 30s
+  ssl: { rejectUnauthorized: false },
+  max: 5,
+  idleTimeoutMillis: 30000
 });
 
-// Função pra testar a conexão assim que o servidor sobe
+// Testa conexão inicial
 async function testConnection() {
   try {
     const client = await pool.connect();
@@ -30,6 +28,7 @@ async function testConnection() {
   }
 }
 
+// Endpoint principal
 app.post("/track", async (req, res) => {
   const { event_name, user_id, page_url, metadata } = req.body;
 
@@ -38,20 +37,36 @@ app.post("/track", async (req, res) => {
   }
 
   try {
-    const query = `
-      INSERT INTO tracking_events (event_name, user_id, page_url, metadata, created_at)
-      VALUES ($1, $2, $3, $4, NOW())
+    // Cria a tabela automaticamente, se não existir
+    const createTable = `
+      CREATE TABLE IF NOT EXISTS events (
+        id SERIAL PRIMARY KEY,
+        event_name TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        page_url TEXT,
+        metadata JSONB,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `;
+    await pool.query(createTable);
+
+    // Insere o evento
+    const insertQuery = `
+      INSERT INTO events (event_name, user_id, page_url, metadata)
+      VALUES ($1, $2, $3, $4)
     `;
     const values = [event_name, user_id, page_url, metadata || {}];
+    await pool.query(insertQuery, values);
 
-    await pool.query(query, values);
+    console.log(`✅ Evento salvo: ${event_name} (${user_id})`);
     res.json({ success: true, message: "Evento salvo com sucesso" });
   } catch (err) {
     console.error("❌ Erro ao salvar evento:", err.message);
-    res.status(500).json({ success: false, error: "Erro interno do servidor" });
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
+// Inicializa servidor
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
   console.log(`🚀 Servidor rodando na porta ${PORT}`);
